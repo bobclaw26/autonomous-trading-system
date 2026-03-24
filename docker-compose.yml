@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - PYTHONUNBUFFERED=1
+      - TWELVE_DATA_API_KEY=${TWELVE_DATA_API_KEY}
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./logs:/app/logs
+    command: python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trading-network
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - trading-network
+    command: redis-server --appendonly yes
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trading-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - trading-network
+    depends_on:
+      - api
+
+volumes:
+  redis-data:
+
+networks:
+  trading-network:
+    driver: bridge
